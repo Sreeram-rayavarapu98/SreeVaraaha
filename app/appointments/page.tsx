@@ -192,14 +192,14 @@ export default function Appointments() {
   }, [])
 
   const DayContent = useCallback(
-    (props: { date: Date }) => {
-      const key = format(props.date, 'yyyy-MM-dd')
+    (props: { day: { date: Date } }) => {
+      const key = format(props.day.date, 'yyyy-MM-dd')
       const summary = CALENDAR_SUMMARY[key]
       const isVisible = summary && (!activeType || summary.types.has(activeType))
 
       return (
         <div className="calendar-day-inner">
-          <span>{props.date.getDate()}</span>
+          <span>{props.day.date.getDate()}</span>
           {summary && isVisible && (
             <span className={`calendar-day-pill calendar-day-pill-${summary.primaryType}`}>
               {summary.total}
@@ -326,10 +326,10 @@ export default function Appointments() {
               modifiersClassNames={{
                 hasEvents: 'rdp-day_has-events',
               }}
-              components={{ DayContent }}
+              components={{ Day: DayContent }}
               fromYear={2023}
               toYear={2025}
-              captionLayout="buttons"
+              captionLayout="dropdown"
             />
             <div style={{ display: 'flex', gap: '10px', marginTop: '8px', fontSize: '10px', color: 'var(--muted-foreground)', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
