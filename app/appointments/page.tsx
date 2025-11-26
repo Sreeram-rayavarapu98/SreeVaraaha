@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { DayPicker, type DayContentProps } from 'react-day-picker'
+import { DayPicker } from 'react-day-picker'
 import { format, parseISO, startOfMonth } from 'date-fns'
 
 type AppointmentType = 'site' | 'call' | 'campaign' | 'overdue'
@@ -192,7 +192,7 @@ export default function Appointments() {
   }, [])
 
   const DayContent = useCallback(
-    (props: DayContentProps) => {
+    (props: { date: Date }) => {
       const key = format(props.date, 'yyyy-MM-dd')
       const summary = CALENDAR_SUMMARY[key]
       const isVisible = summary && (!activeType || summary.types.has(activeType))
