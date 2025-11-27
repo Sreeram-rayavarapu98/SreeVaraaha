@@ -1,9 +1,8 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
-import { DayPicker } from 'react-day-picker'
-import { format, parseISO, startOfMonth } from 'date-fns'
+import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, getMonth, getYear } from 'date-fns'
 
 type AppointmentType = 'site' | 'call' | 'campaign' | 'overdue'
 type AppointmentStatus = 'confirmed' | 'tentative'
@@ -165,51 +164,38 @@ export default function Appointments() {
     return dayAppointments.filter((appointment) => appointment.status === statusMap[viewFilter])
   }, [dayAppointments, viewFilter])
 
-  const calendarModifiers = useMemo(() => {
-    const toDateArray = (set: Set<number>) => Array.from(set).map((ms) => new Date(ms))
-    const bucket = {
-      hasEvents: new Set<number>(),
-      site: new Set<number>(),
-      call: new Set<number>(),
-      campaign: new Set<number>(),
-      overdue: new Set<number>(),
+  const calendarGrid = useMemo(() => {
+    const monthStart = startOfMonth(currentMonth)
+    const monthEnd = endOfMonth(currentMonth)
+    const calendarStart = startOfWeek(monthStart, { weekStartsOn: 1 })
+    const calendarEnd = endOfWeek(monthEnd, { weekStartsOn: 1 })
+    const days = eachDayOfInterval({ start: calendarStart, end: calendarEnd })
+    
+    // Group days into weeks
+    const weeks: Date[][] = []
+    for (let i = 0; i < days.length; i += 7) {
+      weeks.push(days.slice(i, i + 7))
     }
+    return weeks
+  }, [currentMonth])
 
-    CALENDAR_ENTRIES.forEach((entry) => {
-      const timestamp = entry.date.getTime()
-      bucket.hasEvents.add(timestamp)
-      entry.types.forEach((type) => bucket[type].add(timestamp))
-    })
-
-    return {
-      hasEvents: toDateArray(bucket.hasEvents),
-      site: toDateArray(bucket.site),
-      call: toDateArray(bucket.call),
-      campaign: toDateArray(bucket.campaign),
-      overdue: toDateArray(bucket.overdue),
-      today: [new Date()],
+  const getBadgeColor = (type: AppointmentType | 'mixed') => {
+    switch (type) {
+      case 'site':
+        return 'var(--success)'
+      case 'call':
+        return 'var(--warning)'
+      case 'campaign':
+        return 'var(--accent)'
+      case 'overdue':
+        return 'var(--destructive)'
+      case 'mixed':
+        return 'var(--muted)'
+      default:
+        return 'var(--muted)'
     }
-  }, [])
+  }
 
-  const DayContent = useCallback(
-    (props: { day: { date: Date } }) => {
-      const key = format(props.day.date, 'yyyy-MM-dd')
-      const summary = CALENDAR_SUMMARY[key]
-      const isVisible = summary && (!activeType || summary.types.has(activeType))
-
-      return (
-        <div className="calendar-day-inner">
-          <span>{props.day.date.getDate()}</span>
-          {summary && isVisible && (
-            <span className={`calendar-day-pill calendar-day-pill-${summary.primaryType}`}>
-              {summary.total}
-            </span>
-          )}
-        </div>
-      )
-    },
-    [activeType]
-  )
 
   const totalAppointments = dayAppointments.length
   const confirmedAppointments = dayAppointments.filter((item) => item.status === 'confirmed').length
@@ -295,7 +281,7 @@ export default function Appointments() {
                 </div>
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
               <div className="pill-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {[
                   { label: 'All', value: 'all' },
@@ -309,42 +295,281 @@ export default function Appointments() {
                   </span>
                 ))}
               </div>
-              <div style={{ fontSize: '12px', fontWeight: 600, color: 'var(--muted-foreground)' }}>
-                {format(currentMonth, 'LLLL yyyy')}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button
+                  onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+                  style={{
+                    background: 'var(--input)',
+                    border: '1px solid var(--border-overlay)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '8px 12px',
+                    color: 'var(--foreground)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--overlay-light)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'var(--input)'
+                  }}
+                >
+                  ←
+                </button>
+                <select
+                  value={getMonth(currentMonth)}
+                  onChange={(e) => setCurrentMonth(new Date(getYear(currentMonth), parseInt(e.target.value), 1))}
+                  style={{
+                    background: 'var(--input)',
+                    border: '1px solid var(--border-overlay)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '8px 12px',
+                    color: 'var(--foreground)',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    outline: 'none',
+                    minWidth: '120px',
+                  }}
+                >
+                  {Array.from({ length: 12 }, (_, i) => (
+                    <option key={i} value={i} style={{ background: 'var(--card)', color: 'var(--foreground)' }}>
+                      {format(new Date(2024, i, 1), 'MMMM')}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={getYear(currentMonth)}
+                  onChange={(e) => setCurrentMonth(new Date(parseInt(e.target.value), getMonth(currentMonth), 1))}
+                  style={{
+                    background: 'var(--input)',
+                    border: '1px solid var(--border-overlay)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '8px 12px',
+                    color: 'var(--foreground)',
+                    fontSize: '14px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    outline: 'none',
+                    minWidth: '80px',
+                  }}
+                >
+                  {Array.from({ length: 10 }, (_, i) => {
+                    const year = 2020 + i
+                    return (
+                      <option key={year} value={year} style={{ background: 'var(--card)', color: 'var(--foreground)' }}>
+                        {year}
+                      </option>
+                    )
+                  })}
+                </select>
+                <button
+                  onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+                  style={{
+                    background: 'var(--input)',
+                    border: '1px solid var(--border-overlay)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '8px 12px',
+                    color: 'var(--foreground)',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--overlay-light)'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'var(--input)'
+                  }}
+                >
+                  →
+                </button>
+                <button
+                  onClick={() => setCurrentMonth(startOfMonth(new Date()))}
+                  style={{
+                    background: 'var(--primary)',
+                    border: '1px solid var(--primary)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '8px 14px',
+                    color: 'var(--primary-foreground)',
+                    fontSize: '13px',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'all 0.2s',
+                    marginLeft: '4px',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.opacity = '0.9'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.opacity = '1'
+                  }}
+                >
+                  Today
+                </button>
               </div>
             </div>
-            <DayPicker
-              mode="single"
-              weekStartsOn={1}
-              month={currentMonth}
-              onMonthChange={setCurrentMonth}
-              showOutsideDays
-              selected={selectedDay}
-              onSelect={setSelectedDay}
-              className="booking-calendar"
-              modifiers={calendarModifiers}
-              modifiersClassNames={{
-                hasEvents: 'rdp-day_has-events',
-              }}
-              components={{ Day: DayContent }}
-              fromYear={2023}
-              toYear={2025}
-              captionLayout="dropdown"
-            />
-            <div style={{ display: 'flex', gap: '10px', marginTop: '8px', fontSize: '10px', color: 'var(--muted-foreground)', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <div style={{ 
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--overlay-very-light)',
+              border: '1px solid var(--border-overlay)',
+              overflow: 'hidden',
+            }}>
+              {/* Week day headers */}
+              <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(7, 1fr)',
+                background: 'var(--overlay-light)',
+                borderBottom: '1px solid var(--border-overlay)',
+              }}>
+                {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
+                  <div
+                    key={day}
+                    style={{
+                      padding: '12px 8px',
+                      textAlign: 'center',
+                      fontSize: '12px',
+                      fontWeight: 600,
+                      color: 'var(--muted-foreground)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}
+                  >
+                    {day}
+                  </div>
+                ))}
+              </div>
+              
+              {/* Calendar grid */}
+              <div style={{ padding: '8px' }}>
+                {calendarGrid.map((week, weekIndex) => (
+                  <div
+                    key={weekIndex}
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(7, 1fr)',
+                      gap: '4px',
+                      marginBottom: weekIndex < calendarGrid.length - 1 ? '4px' : '0',
+                    }}
+                  >
+                    {week.map((day) => {
+                      const key = format(day, 'yyyy-MM-dd')
+                      const summary = CALENDAR_SUMMARY[key]
+                      const isSelected = selectedDay && isSameDay(day, selectedDay)
+                      const isToday = isSameDay(day, new Date())
+                      const isCurrentMonth = isSameMonth(day, currentMonth)
+                      const hasMatchingAppointments = summary && (!activeType || summary.types.has(activeType))
+
+                      return (
+                        <div
+                          key={key}
+                          onClick={() => setSelectedDay(day)}
+                          style={{
+                            aspectRatio: '1',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'flex-start',
+                            padding: '8px 4px',
+                            borderRadius: 'var(--radius-sm)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            background: isSelected 
+                              ? 'var(--primary)' 
+                              : isToday 
+                              ? 'var(--overlay-light)' 
+                              : 'transparent',
+                            color: isSelected 
+                              ? 'var(--primary-foreground)' 
+                              : isCurrentMonth 
+                              ? 'var(--foreground)' 
+                              : 'var(--muted-foreground)',
+                            fontWeight: isSelected ? 600 : isToday ? 500 : 400,
+                            opacity: isCurrentMonth ? 1 : 0.4,
+                            position: 'relative',
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!isSelected) {
+                              e.currentTarget.style.background = 'var(--overlay-light)'
+                              e.currentTarget.style.opacity = '1'
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isSelected) {
+                              e.currentTarget.style.background = isToday ? 'var(--overlay-light)' : 'transparent'
+                              e.currentTarget.style.opacity = isCurrentMonth ? '1' : '0.4'
+                            }
+                          }}
+                        >
+                          <div style={{ 
+                            fontSize: '13px',
+                            marginBottom: '4px',
+                          }}>
+                            {day.getDate()}
+                          </div>
+                          {hasMatchingAppointments && summary && (
+                            <div
+                              style={{
+                                width: '20px',
+                                height: '20px',
+                                borderRadius: '999px',
+                                background: activeType ? getBadgeColor(activeType) : getBadgeColor(summary.primaryType),
+                                color: (activeType || summary.primaryType) === 'site' ? 'var(--success-foreground)' :
+                                       (activeType || summary.primaryType) === 'call' ? 'var(--warning-foreground)' :
+                                       (activeType || summary.primaryType) === 'campaign' ? 'var(--accent-foreground)' :
+                                       (activeType || summary.primaryType) === 'overdue' ? 'var(--destructive-foreground)' :
+                                       'var(--muted-foreground)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                flexShrink: 0,
+                              }}
+                            >
+                              {activeType ? summary.counts[activeType] : summary.total}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{ 
+              display: 'flex', 
+              gap: '16px', 
+              marginTop: '16px', 
+              paddingTop: '16px',
+              borderTop: '1px solid var(--border-overlay)',
+              fontSize: '11px', 
+              color: 'var(--muted-foreground)', 
+              flexWrap: 'wrap' 
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '999px', background: 'var(--success)' }}></span>
                 Site visits
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '999px', background: 'var(--warning)' }}></span>
                 Calls & nurture
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '999px', background: 'var(--accent)' }}></span>
                 Campaigns
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '999px', background: 'var(--destructive)' }}></span>
                 Overdue follow-ups
               </div>
